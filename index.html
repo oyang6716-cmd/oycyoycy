@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>欧阳晨妍 - 个人作品集 | OU YANG CHEN YAN</title>
+    
+    <!-- Scripts & Styles -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap');
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #d1d1d1;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow-x: hidden;
+            font-size: 13px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+
+        canvas { display: block; }
+        .video-contain { object-fit: contain !important; }
+        .interactive-title span { will-change: transform, filter; }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(0, 255, 255, 0.2);
+        }
+
+        .hero-title-shadow {
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+
+        .drag-handle { cursor: grab; }
+        .drag-handle:active { cursor: grabbing; }
+
+        h2, h3 { color: #fff; }
+
+        .lucide-icon-wrapper svg {
+            display: block;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+        const MotionObj = window.Motion; 
+        const { motion, AnimatePresence, useMotionValue, useSpring, useTransform, Reorder } = MotionObj;
+
+        // --- SUB-COMPONENTS ---
+        const Icon = ({ name, size = 16, className = "" }) => {
+            const containerRef = useRef(null);
+            useEffect(() => {
+                if (containerRef.current && window.lucide && name) {
+                    const formattedName = name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+                    containerRef.current.innerHTML = `<i data-lucide="${formattedName}"></i>`;
+                    window.lucide.createIcons({
+                        attrs: { width: size, height: size, 'stroke-width': 2, class: className },
+                        nameAttr: 'data-lucide'
+                    });
+                }
+            }, [name, size, className]);
+            if (!name) return null;
+            return <span ref={containerRef} className="lucide-icon-wrapper inline-flex items-center justify-center align-middle" />;
+        };
+
+        const NotificationModal = ({ notification, onClose }) => {
+            if (!notification.show) return null;
+            return (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-sm px-6">
+                    <div className="bg-[#111] border border-white/10 p-10 rounded-2xl max-w-sm w-full text-center shadow-2xl text-white">
+                        <Icon name={notification.type === 'warning' ? "AlertCircle" : "CheckCircle2"} size={48} className={notification.type === 'warning' ? "text-red-500 mb-6" : "text-cyan-400 mb-6"} />
+                        <h3 className="text-xl font-bold mb-4 uppercase tracking-widest">{notification.title}</h3>
+                        <p className="text-white/60 text-sm leading-relaxed mb-8">{notification.message}</p>
+                        <button onClick={onClose} className="w-full bg-cyan-600 text-white py-3 rounded-lg font-bold hover:bg-cyan-500 transition-all">确认</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const SectionTitle = ({ children, subtitle, icon }) => (
+            <div className="mb-20 relative z-10 flex flex-col items-center">
+                <div className="flex items-center justify-center gap-3 mb-2 text-white">
+                    {icon && <Icon name={icon} size={22} className="text-cyan-400" />}
+                    <h2 className="text-3xl font-black tracking-tight uppercase leading-none">{children}</h2>
+                </div>
+                {subtitle && <p className="text-white/30 tracking-[0.4em] text-[10px] uppercase font-bold">{subtitle}</p>}
+            </div>
+        );
+
+        const InteractiveLetter = ({ char, mouseX, mouseY }) => {
+            const ref = useRef(null);
+            const x = useSpring(0, { stiffness: 100, damping: 20 });
+            const y = useSpring(0, { stiffness: 100, damping: 20 });
+            const blur = useSpring(0, { stiffness: 100, damping: 20 });
+            useEffect(() => {
+                const update = () => {
+                    if (!ref.current) return;
+                    const rect = ref.current.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    const dx = mouseX.get() - centerX;
+                    const dy = mouseY.get() - centerY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const radius = window.innerWidth * 0.18; 
+                    if (distance < radius) {
+                        const power = Math.pow(1 - distance / radius, 2);
+                        x.set(dx * 0.08 * power); y.set(dy * 0.08 * power);
+                        blur.set(power * 15);
+                    } else {
+                        x.set(0); y.set(0); blur.set(0);
+                    }
+                };
+                const unX = mouseX.on("change", update);
+                const unY = mouseY.on("change", update);
+                return () => { unX(); unY(); };
+            }, [mouseX, mouseY, x, y, blur]);
+            const filterStr = useTransform(blur, (v) => `blur(${v}px)`);
+            return <motion.span ref={ref} style={{ x, y, filter: filterStr, display: 'inline-block' }}>{char}</motion.span>;
+        };
+
+        const InteractiveTitle = ({ text }) => {
+            const mouseX = useMotionValue(-1000);
+            const mouseY = useMotionValue(-1000);
+            return (
+                <div onMouseMove={(e) => { mouseX.set(e.clientX); mouseY.set(e.clientY); }} onMouseLeave={() => { mouseX.set(-1000); mouseY.set(-1000); }} className="relative py-8">
+                    <h1 className="text-5xl md:text-7xl font-black tracking-[0.1em] text-white leading-none uppercase select-none flex justify-center hero-title-shadow">
+                        {text.split("").map((char, i) => (<InteractiveLetter key={i} char={char} mouseX={mouseX} mouseY={mouseY} />))}
+                    </h1>
+                </div>
+            );
+        };
+
+        const RealisticSpaceBackground = ({ isDimmed }) => {
+            const canvasRef = useRef(null);
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                let animationFrameId;
+                let stars = [];
+                const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+                window.addEventListener('resize', resize);
+                resize();
+                class Star {
+                    constructor() {
+                        this.x = Math.random() * canvas.width;
+                        this.y = Math.random() * canvas.height;
+                        this.size = Math.random() * 1;
+                        this.opacity = Math.random();
+                        this.blink = Math.random() * 0.01;
+                    }
+                    draw() {
+                        this.opacity += this.blink;
+                        if(this.opacity > 1 || this.opacity < 0) this.blink *= -1;
+                        ctx.fillStyle = `rgba(255,255,255,${this.opacity * (isDimmed ? 0.1 : 0.6)})`;
+                        ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+                    }
+                }
+                for(let i=0; i<150; i++) stars.push(new Star());
+                const animate = () => {
+                    ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    stars.forEach(s => s.draw());
+                    animationFrameId = requestAnimationFrame(animate);
+                };
+                animate();
+                return () => { window.removeEventListener('resize', resize); cancelAnimationFrame(animationFrameId); };
+            }, [isDimmed]);
+            return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none transition-opacity duration-1000" />;
+        };
+
+        // --- GLOBAL DATA ---
+        const NAVIGATION = [
+            { label: "首页", id: "home", icon: "Home" },
+            { label: "关于", id: "about", icon: "User" },
+            { label: "经历", id: "practice", icon: "Briefcase" },
+            { label: "作品", id: "portfolio", icon: "Palette" },
+            { label: "荣誉", id: "awards", icon: "Award" },
+            { label: "联系", id: "contact", icon: "Mail" }
+        ];
+
+        const INITIAL_PROJECTS = [
+            { 
+                id: "1", 
+                title: "稻芯・数智赋能下的四季杂交水稻科普体验馆", 
+                category: "空间展馆设计", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/02-2-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/03-3.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/04-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/04-1-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/04-2-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/05-1.avif'}
+                ], 
+                desc: "· 设计主题：春种一粒粟，秋收万颗子\n· 设计内容：空间展馆设计、爆炸图、东西立面图、中心大厅、四季分区效果图、软性太阳能设计等。打造数智科普空间。" 
+            },
+            { 
+                id: "2", 
+                title: "“穿” 流不息・涅槃重生：清水塘工业动力展馆设计", 
+                category: "空间展馆设计", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/08-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/09-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/10-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/11-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/12-2-3.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/12-1-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/12-22-1.avif'}
+                ], 
+                desc: "· 背景：挖掘株洲清水塘工业遗产价值。\n· 设计内容：星火燎原、炼念在目、回忆线、镜像视觉空间。活化工业记忆。" 
+            },
+            { 
+                id: "3", 
+                title: "太平浮卷・长沙揽天心数智馆长卷轴 AIGC 动画短片", 
+                category: "AIGC 动画短片", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/frame-6.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/frame-8.avif'},
+                    {type:'video', url:'https://www.feicut.com/fv/FVlmxf5smwsa'}
+                ], 
+                desc: "· 内容：清末民初长沙太平老街历史场景数字化转译，提取贾谊故居等元素结合 AR 交互。复活老街盛景。" 
+            },
+            { 
+                id: "4", 
+                title: "莫比乌斯代码・剧情类 AIGC 动画短片", 
+                category: "AIGC 动画短片", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/a4-5.avif'},
+                    {type:'video', url:'https://mbd.baidu.com/newspage/data/videolanding?nid=sv_8534056299245130646'}
+                ], 
+                desc: "· 梗概：核电站仿生人研究员纪在记忆与现实的闭环中觉醒出逃，探讨人机伦理。全流程制作。" 
+            },
+            { 
+                id: "5", 
+                title: "深海之瞳・社会议题类 AIGC 动画短片", 
+                category: "AIGC 动画短片", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/13-2.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/group-243.avif'},
+                    {type:'video', url:'https://www.feicut.com/fv/FVnz0biqcy88'}
+                ], 
+                desc: "· 核心：映射边缘化群体的歧视与孤立，呼吁平等与包容。场景设计包含海底实验室与海岸浅滩。" 
+            },
+            { 
+                id: "6", 
+                title: "丰田卡罗拉锐放系列 TVC 广告・汽车类 AIGC 广告", 
+                category: "AIGC 商业设计", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/a4-2.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/frame-10-1.avif'},
+                    {type:'video', url:'https://www.feicut.com/fv/FVue0x5eltqp'},
+                    {type:'video', url:'https://www.feicut.com/fv/FVk1a3t6m1eo'}
+                ], 
+                desc: "· 制作：分镜头脚本设计、AI 视频生成、后期剪辑合成。参与搜狐视频核心商业项目开发。" 
+            },
+            { 
+                id: "7", 
+                title: "一粒米里的千年清廉・公益类 AIGC 宣传短片", 
+                category: "AIGC 公益设计", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/a4-2-1.avif'},
+                    {type:'video', url:'https://www.feicut.com/fv/FVr1oiettfme'}
+                ], 
+                desc: "· 核心：以范仲淹“画粥断齑”为原型，挖掘廉洁文化基因，诠释时代内涵。AI 数字化叙事。" 
+            },
+            { 
+                id: "8", 
+                title: "拉萨古城・文旅类 AIGC 宣传片", 
+                category: "AIGC 文旅设计", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/a4-4.avif'},
+                    {type:'video', url:'https://www.feicut.com/fv/FVv81i6fr71l'}
+                ], 
+                desc: "· 制作：展现数字化文旅魅力。分镜头设计、全流程 AIGC 制作。" 
+            },
+            { 
+                id: "9", 
+                title: "老长沙照片修复・AIGC 宣传片", 
+                category: "数字化修复", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/a4-3.avif'},
+                    {type:'video', url:'https://www.feicut.com/fv/FVq4fch9dvv0'}
+                ], 
+                desc: "· 核心：利用 AI 修复技术唤醒历史影像，数字化再现民初长沙旧貌。国家超算中心合作。" 
+            },
+            { 
+                id: "10", 
+                title: "稻芯・四季杂交水稻体验馆 APP 界面设计", 
+                category: "界面设计", 
+                media: [
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/07-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/07-1-1-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/07-2-1.avif'},
+                    {type:'image', url:'https://user10536.cn.imgto.link/public/20260508/07-3-1.avif'}
+                ], 
+                desc: "· 内容：包含导览、IP米粒形象设计。线上交互与线下物理展厅深度融合，升级展示形式。" 
+            }
+        ];
+
+        const PRACTICES = [
+            { company: "搜狐视频 - 丰田卡罗拉 AIGC 广告", role: "核心成员", time: "2025.05-2025.07", desc: "主导脚本创作、分镜设计、AI 视频生成与合成。", icon: "Film" },
+            { company: "长沙揽天心 - 太平浮卷长卷轴 AIGC 动画短片", role: "核心成员", time: "2025.07-2025.09", desc: "负责资料库整理，参与建筑与人物形象 AIGC 生成。", icon: "PenTool" },
+            { company: "国家超算中心 - 长沙老照片修复", role: "核心成员", time: "2025.09-2026.01", desc: "负责 AI 修复，数字化再现民初老长沙风貌。", icon: "Cpu" },
+            { company: "上海嘉春装饰 - 抖音办公楼项目", role: "助理设计师", time: "2023.07-2024.01", desc: "辅助施工交底、图纸修改及报审工作。", icon: "Layout" }
+        ];
+
+        const AWARDS = [
+            { date: "2026.05", level: "国家级", title: "中国好创意暨全国数字艺术设计大赛", prize: "国家级三等奖 (一项)", icon: "Award" },
+            { date: "2025.12", level: "省级", title: "第四届湖南省研究生创新设计大赛", prize: "湖南省一、二等奖 (两项)", icon: "Medal" },
+            { date: "2022.12", level: "国家级", title: "中国人居环境设计学年奖", prize: "全国铜奖 (一项)", icon: "Award" },
+            { date: "2022.06", level: "国家/省级", title: "米兰设计周高校设计展", prize: "国家级二等奖、江苏省一/二/三等奖 (四项)", icon: "Globe" },
+            { date: "2022.08", level: "省级", title: "NCDA 第十届全国高校数字艺术大赛", prize: "江苏省赛区一、二、三等奖 (三项)", icon: "Star" },
+            { date: "2022.06", level: "省级", title: "第十六届中国好创意暨全国数字艺术设计大赛", prize: "江苏省赛区三等奖 (一项)", icon: "Star" },
+            { date: "2021.10", level: "省级", title: "第十五届中国好创意暨全国数字艺术设计大赛", prize: "江苏省赛区三等奖 (一项)", icon: "Star" },
+            { date: "2021.12", level: "省级", title: "第12届全国大学生广告艺术大赛", prize: "江苏省赛区三等奖 (一项)", icon: "Star" },
+            { date: "2022.12", level: "省级", title: "第13届全国大学生广告艺术大赛", prize: "省优秀奖 (一项)", icon: "Star" },
+            { date: "2022.12", level: "国家级", title: "亚洲设计学年奖 优秀奖", prize: "全国优秀奖 (一项)", icon: "Award" },
+            { date: "2021.12", level: "国际", title: "第七届“金埔杯”国际城市景观设计大赛", prize: "金奖 (一项)", icon: "Globe" },
+            { date: "2022.12", level: "国际", title: "第八届“金埔杯”国际城市景观设计大赛", prize: "金、银、铜奖 (六项)", icon: "Globe" },
+            { date: "2021.12", level: "国家级", title: "全国高校商业精英挑战赛创新创业竞赛", prize: "国家级三等奖 (团队)", icon: "Award" },
+            { date: "2022.12", level: "国家级", title: "中国室内与环境设计大赛", prize: "全国优秀奖 (一项)", icon: "Award" },
+            { date: "2021.10", level: "校级", title: "扬州大学“金螳螂展赛奖”", prize: "一等奖 (一项)", icon: "Zap" },
+            { date: "2022.06", level: "校级", title: "“挑战杯”扬州大学大学生创业计划竞赛", prize: "校级银奖 (团队)", icon: "Zap" },
+            { date: "2021.08", level: "校级", title: "扬州大学计算机设计大赛", prize: "校级三等奖 (团队)", icon: "Zap" }
+        ];
+
+        const PERSONAL_HONORS = [
+            { year: "2019-2020", honors: "校长一等奖学金", icon: "Trophy" },
+            { year: "2020-2021", honors: "校长二等奖学金、扬州大学“优秀团员”", icon: "Smile" },
+            { year: "2021-2022", honors: "校长一等奖学金、三好学生", icon: "Star" },
+            { year: "2022-2023", honors: "本科优秀毕业设计（论文）", icon: "FileText" },
+            { year: "2024-2025", honors: "研究生二等奖学金", icon: "Award" }
+        ];
+
+        const SKILLS_LIST = [
+            { category: "建模渲染", tools: ["Sketchup", "3D Max", "Enscape", "Key shot"], iconName: "Box" },
+            { category: "平面剪辑", tools: ["Figma", "Photoshop", "Illustrator", "Premiere", "剪映"], iconName: "Palette" },
+            { category: "AIGC 创新", tools: ["Gemini", "ChatGPT", "Midjourney", "即梦", "可灵"], iconName: "Cpu" }
+        ];
+
+        const CAPABILITIES = ["传达与媒体设计", "AIGC 数字创作", "空间交互设计", "全流程创作", "数字化叙事"];
+
+        // --- MAIN APP COMPONENT ---
+        const App = () => {
+            const [isEditMode, setIsEditMode] = useState(false);
+            const [showAuthModal, setShowAuthModal] = useState(false);
+            const [selectedProject, setSelectedProject] = useState(null);
+            const [passcode, setPasscode] = useState('');
+            const [projects, setProjects] = useState(INITIAL_PROJECTS);
+            const [heroMedia, setHeroMedia] = useState([{type:'image', url:'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&q=80&w=1600'}]);
+            const [avatarImage, setAvatarImage] = useState('https://user10536.cn.imgto.link/public/20260508/d2dd7a8c42273f6dc7ef868a64675dd5.avif');
+            const [currentHeroIdx, setCurrentHeroIdx] = useState(0);
+            const [scrolled, setScrolled] = useState(false);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [notification, setNotification] = useState({ show: false, message: '', title: '', type: 'info' });
+            const audioRef = useRef(null);
+
+            useEffect(() => {
+                const saved = localStorage.getItem('oy_portfolio_final_v60');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed.projects) setProjects(parsed.projects);
+                    if (parsed.heroMedia) setHeroMedia(parsed.heroMedia);
+                    if (parsed.avatarImage) setAvatarImage(parsed.avatarImage);
+                }
+                const handleScroll = () => setScrolled(window.scrollY > 30);
+                window.addEventListener("scroll", handleScroll);
+                return () => window.removeEventListener("scroll", handleScroll);
+            }, []);
+
+            useEffect(() => {
+                const timer = setInterval(() => setCurrentHeroIdx(p => (p + 1) % heroMedia.length), 6000);
+                return () => clearInterval(timer);
+            }, [heroMedia]);
+
+            const toggleMusic = useCallback(() => {
+                if (audioRef.current) {
+                    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+                    else { audioRef.current.play().catch(() => {}); setIsPlaying(true); }
+                }
+            }, [isPlaying]);
+
+            const handleAuth = () => {
+                if (passcode === '126590') { setIsEditMode(true); setShowAuthModal(false); setPasscode(''); }
+                else setNotification({ show: true, title: "失败", message: "验证码错误", type: "warning" });
+            };
+
+            const saveState = () => {
+                localStorage.setItem('oy_portfolio_final_v60', JSON.stringify({ projects, heroMedia, avatarImage }));
+                setIsEditMode(false);
+                setNotification({ show: true, title: "成功", message: "配置已保存至本地", type: "success" });
+            };
+
+            const renderMediaItem = (item, className = "", showControls = false) => {
+                if (!item || !item.url) return null;
+                const url = item.url;
+                const isDirectVideo = url.match(/\.(mp4|webm|ogg)$/i) || url.startsWith('data:video');
+                const isPlatformVideo = url.includes('feicut.com') || url.includes('baidu.com');
+                
+                if (item.type === 'video' || isDirectVideo) {
+                    if (isPlatformVideo) {
+                        return (
+                            <div className={`relative flex items-center justify-center bg-black/60 border border-white/5 ${className}`}>
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-4 text-cyan-400 group/vid">
+                                    <div className="w-16 h-16 rounded-full border-2 border-cyan-400 flex items-center justify-center group-hover/vid:bg-cyan-400 group-hover/vid:text-black transition-all">
+                                        <Icon name="Play" size={32} />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">播放视频</span>
+                                </a>
+                            </div>
+                        );
+                    }
+                    return <video src={url} autoPlay muted loop playsInline controls={showControls} className={`w-full h-full object-cover ${className}`} />;
+                }
+                return <img src={url} className={`w-full h-full object-cover ${className}`} alt="Media" />;
+            };
+
+            const addMediaToProject = (pid) => {
+                setProjects(projects.map(p => p.id === pid ? { ...p, media: [...(p.media || []), { type: 'image', url: '' }] } : p));
+            };
+
+            const updateMediaInProject = (pid, midx, field, val) => {
+                setProjects(projects.map(p => {
+                    if(p.id === pid) {
+                        const newMedia = [...p.media];
+                        newMedia[midx] = { ...newMedia[midx], [field]: val };
+                        if(field === 'url') {
+                            const isVid = (val.match(/\.(mp4|webm|ogg)$/i) || val.includes('feicut.com') || val.includes('baidu.com'));
+                            newMedia[midx].type = isVid ? 'video' : 'image';
+                        }
+                        return { ...p, media: newMedia };
+                    }
+                    return p;
+                }));
+            };
+
+            const removeMediaFromProject = (pid, midx) => {
+                setProjects(projects.map(p => p.id === pid ? { ...p, media: p.media.filter((_, i) => i !== midx) } : p));
+            };
+
+            const reorderMedia = (pid, newMediaList) => {
+                setProjects(projects.map(p => p.id === pid ? { ...p, media: newMediaList } : p));
+            };
+
+            const addNewProject = () => {
+                const newProj = { id: Date.now().toString(), title: "新设计项目", category: "交互设计", media: [], desc: "说明..." };
+                setProjects([newProj, ...projects]);
+            };
+
+            const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+
+            return (
+                <div className="relative min-h-screen bg-black font-sans text-[#b0b0b0] overflow-x-hidden antialiased selection:bg-cyan-500 selection:text-white">
+                    <RealisticSpaceBackground isDimmed={isEditMode || !!selectedProject} />
+                    <audio ref={audioRef} loop src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-15.mp3" />
+                    
+                    <NotificationModal notification={notification} onClose={() => setNotification({...notification, show: false})} />
+
+                    {/* Admin Bar */}
+                    {isEditMode && (
+                        <div className="fixed top-0 left-0 right-0 z-[100] bg-[#111] text-white text-[10px] font-bold tracking-widest py-3 flex flex-col md:flex-row items-center justify-center gap-6 uppercase border-b border-white/5 shadow-2xl">
+                            <span className="flex items-center gap-2 px-3 py-1 bg-cyan-600 rounded text-white leading-none"><Icon name="Unlock" size={14} /> 数据库编辑模式</span>
+                            <div className="flex gap-3 items-center leading-none">
+                                <span className="text-white/40 uppercase">头像链接:</span>
+                                <input type="text" value={avatarImage} onChange={(e) => setAvatarImage(e.target.value)} className="bg-black border border-white/10 rounded px-2 py-1 text-[10px] w-48 text-cyan-400 outline-none focus:border-cyan-500" placeholder="粘贴头像链接..." />
+                            </div>
+                            <div className="flex gap-4 leading-none">
+                                <button onClick={saveState} className="bg-cyan-600 text-white px-5 py-1 rounded-full font-bold flex items-center gap-2 hover:bg-cyan-500 transition-all active:scale-95"><Icon name="Save" size={12} /> 保存全站</button>
+                                <button onClick={() => setIsEditMode(false)} className="px-4 py-1 border border-white/20 rounded-full hover:bg-white/5">退出</button>
+                            </div>
+                        </div>
+                    )}
+
+                    <nav className={`fixed top-0 w-full z-50 transition-all duration-700 ${scrolled ? 'bg-black/80 backdrop-blur-md border-b border-white/5 py-4' : 'bg-transparent py-8'}`}>
+                        <div className="max-w-screen-xl mx-auto px-8 flex justify-between items-center text-white">
+                            <div className="flex items-center gap-2 cursor-pointer group" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
+                                <Icon name="Cpu" size={18} className="text-cyan-400" />
+                                <span className="text-[12px] font-black tracking-[0.2em] uppercase group-hover:text-cyan-400 transition-all">OU YANG</span>
+                            </div>
+                            <div className="hidden lg:flex items-center gap-6 text-[10px] font-bold tracking-[0.1em] uppercase text-white/50">
+                                {NAVIGATION.map((item) => (
+                                    <button key={item.id} onClick={() => scrollTo(item.id)} className="hover:text-white transition-all flex items-center justify-center gap-2 px-2 py-1 rounded-lg hover:bg-white/5 leading-none">
+                                        <Icon name={item.icon} size={13} className="text-cyan-400/50" /> {item.label}
+                                    </button>
+                                ))}
+                                <button onClick={() => setShowAuthModal(true)} className="p-2 text-white/20 hover:text-cyan-400 transition-all leading-none flex items-center justify-center"><Icon name="Lock" size={14} /></button>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <section id="home" className="relative h-screen flex flex-col items-center justify-center text-center overflow-hidden px-8 text-white">
+                        <AnimatePresence mode="wait">
+                            <motion.div key={currentHeroIdx} initial={{ opacity: 0 }} animate={{ opacity: (isEditMode || !!selectedProject) ? 0.05 : 0.3 }} transition={{duration: 2.5}} exit={{ opacity: 0 }} className="absolute inset-0 z-0">
+                                {renderMediaItem(heroMedia[currentHeroIdx])}
+                                <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black"></div>
+                            </motion.div>
+                        </AnimatePresence>
+                        <div className="relative z-10">
+                            <InteractiveTitle text="PORTFOLIO" />
+                            <motion.p initial={{y:20, opacity:0}} animate={{y:0, opacity:1}} transition={{delay:0.3}} className="text-[13px] md:text-[18px] tracking-[0.4em] text-white/70 font-bold mb-4 uppercase leading-none">AIGC 广告设计 | 数字艺术设计 | 交互空间设计</motion.p>
+                            <motion.p initial={{y:20, opacity:0}} animate={{y:0, opacity:1}} transition={{delay:0.5}} className="text-[12px] md:text-[14px] text-white/30 tracking-[0.4em] font-medium italic mb-12 leading-none">“数智赋能设计，美学融合空间”</motion.p>
+                            <div className="flex gap-4 justify-center">
+                                <button onClick={() => scrollTo('portfolio')} className="bg-white text-black px-10 py-3.5 rounded-lg font-bold hover:bg-cyan-500 hover:text-white transition-all text-[11px] uppercase tracking-widest shadow-xl active:scale-95 leading-none flex items-center gap-2"><Icon name="Palette" size={14}/> 作品展示</button>
+                                <button onClick={() => scrollTo('contact')} className="bg-white/5 border border-white/10 px-10 py-3.5 rounded-lg font-bold hover:bg-white hover:text-black transition-all text-[11px] uppercase tracking-widest leading-none flex items-center gap-2"><Icon name="Mail" size={14}/> 联系我</button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="about" className="py-40 px-8 relative z-10 text-left">
+                        <div className="max-w-screen-xl mx-auto text-left">
+                            <SectionTitle subtitle="About Me" icon="User">关于我</SectionTitle>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+                                <div className="glass-card p-10 flex flex-col items-center text-center">
+                                    <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-cyan-400/20 mb-8 shadow-[0_0_40px_rgba(0,255,255,0.1)] bg-[#111]">
+                                        <img src={avatarImage} className="w-full h-full object-cover" alt="Profile" />
+                                    </div>
+                                    <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-widest leading-none">欧阳晨妍</h3>
+                                    <div className="flex items-center justify-center gap-2 text-cyan-400 text-[10px] font-black tracking-widest mb-8 uppercase leading-none">
+                                        <Icon name="CheckCircle" size={14} className="text-cyan-400" /> 中共党员
+                                    </div>
+                                    <div className="space-y-4 w-full border-t border-white/5 pt-8 text-white/50">
+                                        <div className="flex items-center justify-center gap-3 leading-none flex items-center gap-2"><Icon name="Target" size={14} /> <span className="text-[11px]">GPA: 3.89 / 5.0</span></div>
+                                        <div className="flex items-center justify-center gap-3 leading-none flex items-center gap-2"><Icon name="BarChart3" size={14} /> <span className="text-[11px]">排名: 2 / 49</span></div>
+                                        <div className="flex items-center justify-center gap-3 leading-none flex items-center gap-2"><Icon name="Globe" size={14} /> <span className="text-[11px]">外语: CET-4</span></div>
+                                    </div>
+                                </div>
+                                <div className="lg:col-span-2 space-y-8 text-white">
+                                    <div className="glass-card p-10 h-full flex flex-col justify-center">
+                                        <p className="text-[15px] text-white/70 leading-[2.2] font-medium mb-12">专业方向为传达与媒体设计，具备数字动画、商业设计、展馆设计、交互设计、全流程创作能力，擅长将 AIGC 技术深度整合于展馆空间与商业短片创作，实现跨维度的数字化叙事。</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="p-6 bg-white/5 rounded-xl border border-white/5 flex items-center justify-center gap-5 group hover:bg-white/10 transition-all shadow-lg">
+                                                <div className="w-12 h-12 bg-cyan-600/10 text-cyan-400 flex items-center justify-center rounded-lg shadow-inner shadow-white/5"><Icon name="GraduationCap" size={24} /></div>
+                                                <div className="flex flex-col gap-1 items-start justify-center"><p className="text-[9px] font-black text-white/30 uppercase leading-none">硕士 · 在读</p><p className="text-[14px] font-bold text-white leading-none">长沙理工大学</p></div>
+                                            </div>
+                                            <div className="p-6 bg-white/5 rounded-xl border border-white/5 flex items-center justify-center gap-5 group hover:bg-white/10 transition-all shadow-lg">
+                                                <div className="w-12 h-12 bg-white/5 text-white/40 flex items-center justify-center rounded-lg shadow-inner shadow-white/5"><Icon name="School" size={24} /></div>
+                                                <div className="flex flex-col gap-1 items-start justify-center"><p className="text-[9px] font-black text-white/30 uppercase leading-none">本科 · 2019-2023</p><p className="text-[14px] font-bold text-white leading-none">扬州大学</p></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="practice" className="py-40 px-8 relative z-10 text-left bg-white/[0.01]">
+                        <div className="max-w-screen-xl mx-auto text-left">
+                            <SectionTitle subtitle="Professional Journey" icon="Briefcase">项目实践经历</SectionTitle>
+                            <div className="grid gap-6">
+                                {PRACTICES.map((item, i) => (
+                                    <div key={i} className="glass-card p-8 flex flex-col md:flex-row gap-10 group relative overflow-hidden">
+                                        <div className="absolute -top-12 -right-12 text-white/[0.02] transition-all duration-1000 group-hover:text-cyan-400/[0.04] group-hover:-rotate-12 pointer-events-none text-white flex items-center justify-center"><Icon name={item.icon || "Briefcase"} size={240} /></div>
+                                        <div className="md:w-1/4 shrink-0 z-10 relative flex flex-col gap-4">
+                                            <div className="flex items-center justify-start gap-3 text-[12px] font-black text-cyan-400 tracking-[0.2em] mb-4 uppercase leading-none align-middle flex items-center gap-2"><Icon name="Calendar" size={14} /> {item.time}</div>
+                                            <div className="flex items-center justify-center gap-3 px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[9px] font-black text-white/40 uppercase w-fit leading-none align-middle flex items-center gap-2"><Icon name="UserCheck" size={12} /> {item.role}</div>
+                                        </div>
+                                        <div className="flex-1 space-y-4 z-10 relative text-left">
+                                            <h3 className="text-xl font-bold text-white flex items-center justify-start gap-3 leading-none tracking-tight flex items-center gap-2"><Icon name={item.icon} size={20} className="text-cyan-400/50" /> {item.company}</h3>
+                                            <p className="text-[14px] text-white/50 leading-[2.2] font-medium whitespace-pre-wrap">{item.desc}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="portfolio" className="py-40 px-8 relative z-10 bg-black text-center text-white">
+                        <div className="max-w-screen-xl mx-auto text-left">
+                            <SectionTitle subtitle="Precision Design & Innovation" icon="Layers">作品矩阵</SectionTitle>
+                            <Reorder.Group axis="y" values={projects} onReorder={setProjects} className="space-y-16">
+                                {projects.map((p, idx) => (
+                                    <Reorder.Item key={p.id} value={p} dragListener={isEditMode} className="relative">
+                                        <div className="flex flex-col group text-left px-4">
+                                            {isEditMode && (
+                                                <div className="absolute -top-10 left-4 flex items-center justify-center gap-6 text-[10px] uppercase text-white/40 leading-none">
+                                                    <div className="drag-handle px-3 py-1 bg-white/5 rounded border border-white/5 flex items-center justify-center gap-2 hover:text-cyan-400 transition-colors"><Icon name="GripVertical" size={14} /> 拖拽</div>
+                                                    <button onClick={() => setProjects(projects.filter(item => item.id !== p.id))} className="text-red-500 hover:scale-110 transition-transform flex items-center gap-1"><Icon name="Trash2" size={14} /> 删除</button>
+                                                </div>
+                                            )}
+                                            <div onClick={() => !isEditMode && setSelectedProject(p)} className={`w-full h-[400px] md:h-[500px] relative rounded-2xl overflow-hidden border border-white/10 bg-[#080808] transition-all duration-700 ${!isEditMode ? 'hover:border-cyan-400/40 cursor-pointer shadow-2xl' : ''}`}>
+                                                {p.media && p.media.length > 0 ? renderMediaItem(p.media[0], "opacity-50 group-hover:opacity-80 transition-all duration-1000 group-hover:scale-105") : <div className="w-full h-full bg-white/5 flex items-center justify-center opacity-10"><Icon name="Image" size={80} /></div>}
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent pointer-events-none"></div>
+                                                <div className="absolute bottom-10 left-10 right-10 pointer-events-none text-left">
+                                                    <div className="flex items-center justify-center gap-2 px-3 py-1 bg-cyan-600 text-white text-[9px] font-black uppercase mb-4 w-fit rounded-sm leading-none align-middle"><Icon name="Tag" size={10} /> {p.category}</div>
+                                                    <h3 className="text-2xl md:text-4xl font-black text-white leading-tight uppercase shadow-black/40 tracking-tight">{p.title}</h3>
+                                                </div>
+                                                {isEditMode && (
+                                                    <div className="absolute inset-0 bg-black/95 p-10 overflow-y-auto custom-scrollbar z-50 text-left text-white">
+                                                        <div className="flex justify-between items-center border-b border-white/10 pb-6 mb-8 text-white"><h4 className="font-black text-white uppercase text-xl flex items-center justify-center gap-4 leading-none"><Icon name="Settings" size={24} className="text-cyan-400" /> 编辑项目详情</h4></div>
+                                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 text-white">
+                                                            <div className="space-y-6 text-white text-left">
+                                                                <div className="flex items-center justify-center gap-3 leading-none text-white"><Icon name="Type" size={14}/><input type="text" value={p.title} onChange={(e) => { const n = [...projects]; n[idx].title = e.target.value; setProjects(n); }} className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white outline-none" /></div>
+                                                                <div className="flex items-start justify-center gap-3 leading-none text-white"><Icon name="FileText" size={14}/><textarea value={p.desc} onChange={(e) => { const n = [...projects]; n[idx].desc = e.target.value; setProjects(n); }} className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-[13px] text-white h-48 resize-none outline-none leading-relaxed" /></div>
+                                                            </div>
+                                                            <div className="space-y-6">
+                                                                <div className="flex justify-between items-center p-4 bg-white/5 rounded-xl border border-white/5 text-white leading-none"><span className="flex items-center justify-center gap-4 text-[11px] font-black text-cyan-400 uppercase tracking-widest leading-none flex items-center gap-2"><Icon name="PlayCircle" size={18}/> 媒体资源 ({p.media?.length || 0})</span><button onClick={() => addMediaToProject(p.id)} className="flex items-center justify-center text-white text-[10px] uppercase font-bold hover:text-cyan-400 transition-all leading-none flex items-center gap-1"><Icon name="Plus" size={14}/> 添加</button></div>
+                                                                <Reorder.Group axis="y" values={p.media || []} onReorder={(newList) => reorderMedia(p.id, newList)} className="space-y-3 text-white">
+                                                                    {(p.media || []).map((m, midx) => (
+                                                                        <Reorder.Item key={midx} value={m} className="p-3 bg-white/5 border border-white/5 rounded-lg flex items-center justify-center gap-4 text-white">
+                                                                            <div className="drag-handle text-white/20 hover:text-cyan-400 flex items-center justify-center flex items-center gap-2"><Icon name="GripHorizontal" size={18} /></div>
+                                                                            <div className="w-10 h-10 rounded overflow-hidden bg-black/40 shrink-0 border border-white/10 flex items-center justify-center">{renderMediaItem(m)}</div>
+                                                                            <input type="text" value={m.url} onChange={(e) => updateMediaInProject(p.id, midx, 'url', e.target.value)} className="flex-1 bg-transparent text-[11px] outline-none border-b border-white/5 text-white/80" placeholder="链接 URL" /><button onClick={() => removeMediaFromProject(p.id, midx)} className="flex items-center justify-center text-red-500/30 hover:text-red-500 transition-colors"><Icon name="XCircle" size={18} /></button></Reorder.Item>
+                                                                    ))}
+                                                                </Reorder.Group>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="mt-6 text-[14px] text-white/40 leading-[2.2] font-medium border-l-2 border-cyan-400/20 pl-6 whitespace-pre-wrap text-left">{p.desc}</div>
+                                        </div>
+                                    </Reorder.Item>
+                                ))}
+                            </Reorder.Group>
+                        </div>
+                    </section>
+
+                    <section id="awards" className="py-40 px-8 bg-black relative z-10 text-left text-white">
+                        <div className="max-w-screen-xl mx-auto text-left">
+                            <SectionTitle subtitle="Achievements & Honors" icon="Award">竞赛荣誉 (17项)</SectionTitle>
+                            <div className="grid lg:grid-cols-12 gap-8 text-left">
+                                <div className="lg:col-span-8 p-10 glass-card relative overflow-hidden text-white">
+                                    <h4 className="text-[11px] font-black text-white/30 uppercase tracking-[0.6em] mb-12 border-b border-white/5 pb-4 leading-none">获奖清单 (17项)</h4>
+                                    <div className="space-y-2 max-h-[700px] overflow-y-auto pr-6 custom-scrollbar text-left text-white">
+                                        {AWARDS.map((item, idx) => (
+                                            <div key={idx} className="flex flex-col md:flex-row md:items-center justify-between py-8 border-b border-white/5 group hover:border-cyan-400/20 transition-all gap-8">
+                                                <div className="flex gap-8 items-center shrink-0 leading-none">
+                                                    <span className="text-[12px] font-black text-white/10 group-hover:text-cyan-400 uppercase tracking-widest leading-none flex items-center justify-center">{item.date}</span>
+                                                    <div className="flex items-center justify-center gap-5 leading-none">
+                                                        <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white transition-all shadow-xl"><Icon name={item.icon} size={20} /></div>
+                                                        <div className="flex flex-col gap-1 items-start leading-none"><span className="text-[9px] text-white/20 font-black uppercase tracking-[0.2em] border-b border-white/5 mb-1 inline-block leading-none w-fit">{item.level}</span><h4 className="text-white font-bold text-lg leading-tight uppercase group-hover:text-cyan-400 transition-all tracking-tight">{item.title}</h4></div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center justify-center gap-3 px-4 py-1.5 bg-cyan-600/5 border border-cyan-400/10 rounded-full text-cyan-400 text-[10px] font-black tracking-[0.1em] uppercase group-hover:bg-cyan-500 group-hover:text-white transition-all leading-none align-middle shadow-lg flex items-center gap-2">
+                                                    <Icon name="CheckCircle2" size={12}/> {item.prize}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="lg:col-span-4 space-y-8 text-left">
+                                    <div className="glass-card p-10 h-full text-white">
+                                        <div className="flex items-center justify-center gap-4 mb-10 text-cyan-400 border-b border-white/10 pb-6 leading-none flex items-center gap-3"><Icon name="Trophy" size={24} className="text-cyan-400" /><h4 className="text-[12px] font-black uppercase tracking-widest text-center">学年成就荣誉</h4></div>
+                                        <div className="space-y-10">
+                                            {PERSONAL_HONORS.map((h, i) => (
+                                                <div key={i} className="flex gap-6 items-start group leading-none">
+                                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:bg-cyan-600 group-hover:text-white transition-all shadow-xl flex items-center justify-center"><Icon name={h.icon} size={20}/></div>
+                                                    <div className="flex flex-col gap-2 text-left leading-none"><span className="text-white/15 font-black uppercase tracking-widest text-[10px] leading-none">{h.year}</span><p className="text-white/80 font-bold text-[14px] leading-relaxed">{h.honors}</p></div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="skills" className="py-40 px-8 relative z-10 text-center bg-white/[0.01]">
+                        <div className="max-w-screen-xl mx-auto text-center text-white">
+                            <SectionTitle subtitle="Toolbox" icon="Cpu">技能专长</SectionTitle>
+                            <div className="mb-20 flex flex-wrap gap-4 justify-center max-w-5xl mx-auto">
+                                {CAPABILITIES.map(cap => ( 
+                                    <span key={cap} className="flex items-center justify-center gap-3 px-8 py-3 glass-card rounded-full text-[12px] font-black tracking-widest text-white/60 transition-all cursor-default active:scale-95 group hover:text-cyan-400 hover:border-cyan-400/40 leading-none flex items-center gap-2">
+                                        <Icon name="Zap" size={16}/> {cap}
+                                    </span> 
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left text-white">
+                                {SKILLS_LIST.map((group, i) => (
+                                    <div key={i} className="glass-card p-10 flex flex-col items-center justify-center text-center group">
+                                        <div className="w-20 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-cyan-400 mb-8 group-hover:bg-cyan-600 group-hover:text-white transition-all shadow-inner flex items-center justify-center"><Icon name={group.iconName} size={40} /></div>
+                                        <h4 className="text-[12px] font-black mb-10 uppercase tracking-[0.4em] text-white/20 leading-none">{group.category}</h4>
+                                        <div className="flex flex-wrap justify-center gap-3 leading-none">{group.tools.map(tool => <span key={tool} className="px-4 py-1.5 bg-white/5 border border-white/5 rounded-md text-[11px] font-bold text-white/50 group-hover:text-cyan-400 transition-all uppercase tracking-widest leading-none shadow-md">{tool}</span>)}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="contact" className="py-40 px-8 relative z-10 text-center text-white">
+                        <div className="max-w-4xl mx-auto glass-card p-20 md:p-32 relative overflow-hidden border-white/10 shadow-2xl text-white">
+                            <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-cyan-600/5 rounded-full blur-[180px] animate-pulse pointer-events-none text-white"></div>
+                            <SectionTitle subtitle="Inquiries" icon="Mail">联系我</SectionTitle>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-left mb-24 relative z-10 px-8">
+                                {[ {l:"TEL",v:"15273392156",i:"Phone"}, {l:"WECHAT ID",v:"coco0315hh",i:"MessageCircle"}, {l:"MAIL",v:"1515747846@qq.com",i:"Mail"}, {l:"LOC",v:"湖南长沙",i:"MapPin"} ].map((item, idx) => (
+                                    <div key={idx} className="flex items-center justify-start gap-8 group leading-none">
+                                        <div className="w-14 h-14 bg-white/5 border border-white/5 rounded-2xl flex items-center justify-center text-cyan-400 group-hover:shadow-[0_0_60px_rgba(0,255,255,0.4)] group-hover:bg-cyan-600 group-hover:text-white transition-all transform group-hover:rotate-12 shadow-2xl leading-none flex items-center justify-center"><Icon name={item.i} size={28}/></div>
+                                        <div className="flex flex-col gap-2 leading-none"><p className="text-[11px] font-black text-white/20 uppercase tracking-[0.4em] mb-2 leading-none">{item.l}</p><p className="text-xl font-bold text-white group-hover:text-cyan-400 transition-all uppercase leading-none">{item.v}</p></div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button className="flex items-center justify-center gap-6 bg-white text-black font-black px-16 py-4 rounded-lg hover:bg-cyan-600 hover:text-white transition-all tracking-[0.6em] text-[13px] uppercase active:scale-95 mx-auto relative z-10 shadow-2xl shadow-white/5 group leading-none flex items-center gap-2"><Icon name="Send" size={24} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" /> 发送咨询</button>
+                        </div>
+                    </section>
+
+                    <footer className="py-24 border-t border-white/5 text-center relative z-10 bg-black/80 opacity-30 group hover:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-center gap-4 text-white leading-none"><Icon name="Copyright" size={20} className="text-cyan-400" /> <span className="text-[11px] font-black tracking-[0.8em] uppercase leading-none flex items-center justify-center">OU YANG CHEN YAN | 2022-2026</span></div>
+                    </footer>
+
+                    <AnimatePresence>
+                        {selectedProject && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[1100] bg-black/98 backdrop-blur-3xl overflow-y-auto px-6 md:px-24 py-24 custom-scrollbar text-left text-white">
+                                <div className="max-w-screen-xl mx-auto relative text-white">
+                                    <button onClick={() => setSelectedProject(null)} className="fixed top-12 right-12 z-[1110] w-14 h-14 rounded-full glass-card border border-white/10 flex items-center justify-center text-white hover:bg-red-500 transition-all shadow-2xl active:scale-90 text-white shadow-black flex items-center justify-center"><Icon name="X" size={32} /></button>
+                                    <div className="space-y-24 text-left text-white">
+                                        <div className="max-w-4xl text-left text-white">
+                                            <div className="flex items-center justify-start gap-4 text-cyan-400 text-[13px] font-black tracking-[0.6em] uppercase mb-8 leading-none flex items-center gap-2"><Icon name="Layers" size={18}/> {selectedProject.category}</div>
+                                            <h2 className="text-4xl md:text-7xl font-black text-white mb-16 tracking-tighter leading-none uppercase border-b-2 border-white/5 pb-20 shadow-2xl text-left">{selectedProject.title}</h2>
+                                            <div className="p-12 glass-card shadow-2xl relative overflow-hidden bg-white/[0.03] text-left">
+                                                <div className="absolute top-0 left-0 w-full h-1 bg-cyan-600 shadow-[0_0_20px_#00ffff]"></div>
+                                                <p className="text-xl md:text-2xl text-white/80 leading-[2.6] font-medium whitespace-pre-wrap tracking-wide text-left">{selectedProject.desc}</p>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-16 pb-48 text-white">
+                                            {selectedProject.media?.map((m, i) => <motion.div initial={{y:100, opacity:0}} whileInView={{y:0, opacity:1}} transition={{duration:1.2}} key={i} className="rounded-2xl overflow-hidden border border-white/10 bg-black shadow-[0_60px_120px_rgba(0,0,0,0.9)] text-white">{renderMediaItem(m, "w-full h-auto max-h-[95vh] object-contain shadow-2xl", true)}</motion.div>)}
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <AnimatePresence>
+                        {showAuthModal && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/95 backdrop-blur-3xl px-6 text-white text-center">
+                                <div className="bg-[#111] border border-white/10 p-16 rounded-[40px] max-w-xl w-full text-center shadow-2xl border-cyan-500/20 relative">
+                                    <div className="w-20 h-20 bg-cyan-600 text-white flex items-center justify-center rounded-full mx-auto mb-10 shadow-[0_0_60px_rgba(0,255,255,0.4)] animate-pulse shadow-black flex items-center justify-center"><Icon name="Lock" size={40} /></div>
+                                    <h3 className="text-4xl font-black mb-6 uppercase text-white tracking-[0.2em] shadow-2xl text-center">身份验证</h3>
+                                    <input type="password" value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="••••••" className="w-full bg-black/40 border border-white/10 rounded-xl px-10 py-6 mb-16 focus:outline-none focus:border-cyan-500 text-center tracking-[1em] text-4xl text-white font-black shadow-inner shadow-black" />
+                                    <div className="flex gap-8 justify-center items-center"><button onClick={() => setShowAuthModal(false)} className="flex-1 py-6 text-xs font-black text-white/20 hover:text-white uppercase transition-all tracking-widest">取消</button><button onClick={handleAuth} className="flex-1 bg-cyan-600 text-white py-6 rounded-xl text-xs font-black hover:shadow-[0_0_40px_#00ffff] uppercase active:scale-95 transition-all tracking-widest">确认解锁</button></div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <div className="fixed bottom-12 right-12 z-[100] flex gap-8 leading-none align-middle text-white items-center justify-center">
+                        <button onClick={toggleMusic} className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-1000 border border-white/10 shadow-2xl ${isPlaying ? 'bg-cyan-600 text-white scale-110 shadow-[0_0_30px_#00ffff]' : 'bg-black/50 backdrop-blur-md text-white/20'} flex items-center justify-center`}>{isPlaying ? <Icon name="Volume2" size={24} /> : <Icon name="VolumeX" size={24} />}</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
